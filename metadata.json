@@ -1,0 +1,5 @@
+{
+  "name": "Copy of IntelliOCR AI - 智能批量圖轉表",
+  "description": "批量上傳圖片，利用 Gemini 2.5 Flash 的深度學習視覺能力，自動識別並提取您指定的特定欄位內容，最後彙整成表格並支援導出。",
+  "requestFramePermissions": []
+}
