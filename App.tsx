@@ -191,8 +191,9 @@ const App: React.FC = () => {
        // Stop if the user navigated away or reset (optional check logic could be added here)
        await processSingleFile(id);
        
-       // Optional small delay between requests
-       await new Promise(resolve => setTimeout(resolve, 500));
+       // Increased delay to 3000ms (3 seconds) + Processing Time
+       // This ensures we stay well below the 15 requests per minute limit of the free tier.
+       await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     setIsProcessing(false);

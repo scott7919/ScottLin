@@ -78,6 +78,29 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
 };
 
 /**
+ * Helper to retry function on 429/503 errors (Smart Retry)
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const msg = error.toString().toLowerCase();
+    // Check for common rate limit or overload keywords
+    const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('exhausted');
+    const isServerOverload = msg.includes('503') || msg.includes('overloaded');
+    
+    if ((isRateLimit || isServerOverload) && retries > 0) {
+      console.warn(`API Limit hit. Retrying in ${baseDelay}ms... (${retries} retries left)`);
+      // Wait for delay
+      await new Promise(resolve => setTimeout(resolve, baseDelay));
+      // Retry with double delay (Exponential Backoff)
+      return withRetry(fn, retries - 1, baseDelay * 2);
+    }
+    throw error;
+  }
+}
+
+/**
  * Analyzes a single image to extract specific fields using Gemini.
  * Supports "Few-Shot Learning" by accepting reference examples.
  * Supports Multiple Entity Detection (returns an array).
@@ -152,16 +175,19 @@ export const analyzeImage = async (
       text: `Analyze the last image above. Identify all distinct items. Extract these fields: ${fieldList}. Return a JSON Array.`
     });
 
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: {
-        parts: parts
-      },
-      config: {
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        temperature: 0.1, 
-      }
+    // Wrapped in retry logic to handle 429 errors gracefully
+    const response = await withRetry(async () => {
+        return await ai.models.generateContent({
+            model: model,
+            contents: {
+                parts: parts
+            },
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                temperature: 0.1, 
+            }
+        });
     });
 
     const responseText = response.text;
