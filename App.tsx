@@ -167,8 +167,13 @@ const App: React.FC = () => {
   const handleProcessAll = async () => {
     if (files.length === 0 || fields.length === 0) return;
 
-    // Check for API key
-    if (!apiKey && !process.env.API_KEY) {
+    // Helper to check system env presence safely
+    const hasSystemKey = () => {
+        try { return !!process.env.API_KEY; } catch(e) { return false; }
+    };
+
+    // Check for API key (Local or System)
+    if (!apiKey && !hasSystemKey()) {
        setIsApiKeyModalOpen(true);
        return;
     }

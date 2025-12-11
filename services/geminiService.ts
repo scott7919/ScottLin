@@ -107,6 +107,27 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000)
 }
 
 /**
+ * Get the system API key from various potential sources
+ */
+const getSystemApiKey = () => {
+  // 1. Try process.env.API_KEY (replaced by Vite define)
+  try {
+    if (process.env.API_KEY) return process.env.API_KEY;
+  } catch (e) {}
+  
+  // 2. Try import.meta.env (Standard Vite) if available
+  try {
+    // @ts-ignore
+    if (import.meta.env && import.meta.env.VITE_API_KEY) {
+       // @ts-ignore
+       return import.meta.env.VITE_API_KEY;
+    }
+  } catch (e) {}
+
+  return '';
+};
+
+/**
  * Analyzes a single image to extract specific fields using Gemini.
  * Supports "Few-Shot Learning" by accepting reference examples.
  * Supports Multiple Entity Detection (returns an array).
@@ -121,7 +142,8 @@ export const analyzeImage = async (
 ): Promise<ExtractedData[]> => {
   try {
     // 0. Validation
-    const effectiveKey = apiKey || process.env.API_KEY;
+    const effectiveKey = apiKey || getSystemApiKey();
+    
     if (!effectiveKey) {
         throw new Error("未設定 API Key (Missing API Key)");
     }
