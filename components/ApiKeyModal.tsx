@@ -11,13 +11,13 @@ interface ApiKeyModalProps {
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, t }) => {
   const [keyInput, setKeyInput] = useState(currentKey);
-  const [validationStatus, setValidationStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [validationStatus, setValidationStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid' | 'quota'>('idle');
 
   const handleTestConnection = async () => {
     if (!keyInput.trim()) return;
     setValidationStatus('validating');
-    const isValid = await validateApiKey(keyInput.trim());
-    setValidationStatus(isValid ? 'valid' : 'invalid');
+    const result = await validateApiKey(keyInput.trim());
+    setValidationStatus(result);
   };
 
   const handleSave = () => {
@@ -69,6 +69,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
               placeholder={t.apiKeyPlaceholder}
               className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 mb-2 ${
                 validationStatus === 'invalid' ? 'border-red-300 bg-red-50' : 
+                validationStatus === 'quota' ? 'border-amber-300 bg-amber-50' :
                 validationStatus === 'valid' ? 'border-green-300 bg-green-50' : 
                 'border-slate-300'
               }`}
@@ -78,6 +79,9 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
             )}
             {validationStatus === 'invalid' && (
               <AlertCircleIcon className="absolute right-3 top-3.5 w-5 h-5 text-red-500" />
+            )}
+            {validationStatus === 'quota' && (
+              <AlertCircleIcon className="absolute right-3 top-3.5 w-5 h-5 text-amber-500" />
             )}
           </div>
           
@@ -94,6 +98,9 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
             )}
             {validationStatus === 'invalid' && (
               <p className="text-xs text-red-600 font-medium">{t.apiKeyInvalid}</p>
+            )}
+            {validationStatus === 'quota' && (
+              <p className="text-xs text-amber-600 font-medium">⚠️ API Quota Exceeded (429). Key is valid but busy.</p>
             )}
           </div>
           

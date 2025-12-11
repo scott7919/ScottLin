@@ -191,14 +191,17 @@ const App: React.FC = () => {
       .filter(f => f.status === ProcessStatus.IDLE || f.status === ProcessStatus.ERROR || f.status === ProcessStatus.PENDING)
       .map(f => f.id);
 
-    // Process Sequentially to avoid Rate Limits (429 Errors) and excessive quota usage
+    // Process Sequentially with Strict Rate Limiting
     for (const id of filesToProcess) {
-       // Stop if the user navigated away or reset (optional check logic could be added here)
+       // Stop if the user navigated away (in a real router setup) or component unmounted (ref check omitted for simplicity)
+       
        await processSingleFile(id);
        
-       // Increased delay to 3000ms (3 seconds) + Processing Time
-       // This ensures we stay well below the 15 requests per minute limit of the free tier.
-       await new Promise(resolve => setTimeout(resolve, 3000));
+       // INCREASED SAFETY DELAY:
+       // Free tier limit is 15 requests per minute.
+       // 60 seconds / 15 requests = 4 seconds per request.
+       // We set 6000ms (6s) to be absolutely safe and account for network latency.
+       await new Promise(resolve => setTimeout(resolve, 6000));
     }
 
     setIsProcessing(false);

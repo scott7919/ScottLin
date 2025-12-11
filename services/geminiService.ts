@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ClientError } from "@google/genai";
 import { ExtractedData, ReferenceExample } from "../types";
 
 // Note: We no longer initialize a global `ai` instance here.
@@ -59,10 +59,11 @@ export const fileToGenericBase64 = (file: File): Promise<string> => {
 
 /**
  * Validates the provided API Key by making a minimal API call.
+ * Returns unique strings for different error states to help UI.
  */
-export const validateApiKey = async (apiKey: string): Promise<boolean> => {
+export const validateApiKey = async (apiKey: string): Promise<'valid' | 'invalid' | 'quota'> => {
   try {
-    if (!apiKey) return false;
+    if (!apiKey) return 'invalid';
     const ai = new GoogleGenAI({ apiKey });
     // Use a lightweight model and minimal prompt to check validity
     await ai.models.generateContent({
@@ -70,21 +71,29 @@ export const validateApiKey = async (apiKey: string): Promise<boolean> => {
       contents: { parts: [{ text: 'Ping' }] },
       config: { maxOutputTokens: 1 }
     });
-    return true;
-  } catch (error) {
+    return 'valid';
+  } catch (error: any) {
     console.error("API Key validation failed:", error);
-    return false;
+    const msg = JSON.stringify(error).toLowerCase();
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
+        return 'quota';
+    }
+    return 'invalid';
   }
 };
 
 /**
  * Helper to retry function on 429/503 errors (Smart Retry)
  */
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 5000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    const msg = error.toString().toLowerCase();
+    let msg = error.message || error.toString();
+    try {
+        // Try to stringify if it's an object to catch hidden properties
+        msg = JSON.stringify(error).toLowerCase();
+    } catch(e) {}
     
     // Check for Invalid API Key explicitly (400 or 401 usually)
     if (msg.includes('api key not valid') || msg.includes('key invalid') || msg.includes('400 bad request')) {
@@ -92,11 +101,11 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000)
     }
 
     // Check for common rate limit or overload keywords
-    const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('exhausted');
+    const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('exhausted') || msg.includes('resource_exhausted');
     const isServerOverload = msg.includes('503') || msg.includes('overloaded');
     
     if ((isRateLimit || isServerOverload) && retries > 0) {
-      console.warn(`API Limit hit. Retrying in ${baseDelay}ms... (${retries} retries left)`);
+      console.warn(`API Limit hit (429/503). Retrying in ${baseDelay}ms... (${retries} retries left)`);
       // Wait for delay
       await new Promise(resolve => setTimeout(resolve, baseDelay));
       // Retry with double delay (Exponential Backoff)
@@ -238,8 +247,22 @@ export const analyzeImage = async (
 
     return parsedData;
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error analyzing image:", error);
-    throw error;
+    
+    // Format Error Message for UI
+    let friendlyMessage = error.message;
+    
+    // Check if it's the raw 429 JSON string
+    if (typeof error.message === 'string' && error.message.includes('"code":429')) {
+       friendlyMessage = "API 用量已達上限，請稍候再試 (429 Rate Limit)";
+    } else if (friendlyMessage.includes('429')) {
+       friendlyMessage = "API 用量已達上限，請稍候再試";
+    } else if (friendlyMessage.includes('503')) {
+       friendlyMessage = "伺服器繁忙，請稍候再試";
+    }
+    
+    // Rethrow with clean message
+    throw new Error(friendlyMessage);
   }
 };
