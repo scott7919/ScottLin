@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { KeyIcon, ShieldCheckIcon, XIcon, CheckCircleIcon, AlertCircleIcon, LoaderIcon } from './Icons';
-import { validateApiKey } from '../services/geminiService';
+import { validateApiKey, ValidationResult } from '../services/geminiService';
 
 interface ApiKeyModalProps {
   currentKey: string;
@@ -11,13 +11,15 @@ interface ApiKeyModalProps {
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, t }) => {
   const [keyInput, setKeyInput] = useState(currentKey);
-  const [validationStatus, setValidationStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid' | 'quota'>('idle');
+  const [validationResult, setValidationResult] = useState<ValidationResult>({ status: 'idle' });
+  const [isValidating, setIsValidating] = useState(false);
 
   const handleTestConnection = async () => {
     if (!keyInput.trim()) return;
-    setValidationStatus('validating');
+    setIsValidating(true);
     const result = await validateApiKey(keyInput.trim());
-    setValidationStatus(result);
+    setValidationResult(result);
+    setIsValidating(false);
   };
 
   const handleSave = () => {
@@ -30,6 +32,21 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
     onSave('');
     onClose();
   };
+
+  // Determine styles based on status
+  let inputBorderClass = 'border-slate-300';
+  let inputBgClass = '';
+  
+  if (validationResult.status === 'valid') {
+      inputBorderClass = 'border-green-300';
+      inputBgClass = 'bg-green-50';
+  } else if (validationResult.status === 'invalid') {
+      inputBorderClass = 'border-red-300';
+      inputBgClass = 'bg-red-50';
+  } else if (validationResult.status === 'quota') {
+      inputBorderClass = 'border-amber-300';
+      inputBgClass = 'bg-amber-50';
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -64,43 +81,51 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
               value={keyInput}
               onChange={(e) => {
                 setKeyInput(e.target.value);
-                setValidationStatus('idle');
+                setValidationResult({ status: 'idle' });
               }}
               placeholder={t.apiKeyPlaceholder}
-              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 mb-2 ${
-                validationStatus === 'invalid' ? 'border-red-300 bg-red-50' : 
-                validationStatus === 'quota' ? 'border-amber-300 bg-amber-50' :
-                validationStatus === 'valid' ? 'border-green-300 bg-green-50' : 
-                'border-slate-300'
-              }`}
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 mb-2 transition-colors ${inputBorderClass} ${inputBgClass}`}
             />
-            {validationStatus === 'valid' && (
+            {validationResult.status === 'valid' && (
               <CheckCircleIcon className="absolute right-3 top-3.5 w-5 h-5 text-green-500" />
             )}
-            {validationStatus === 'invalid' && (
+            {validationResult.status === 'invalid' && (
               <AlertCircleIcon className="absolute right-3 top-3.5 w-5 h-5 text-red-500" />
             )}
-            {validationStatus === 'quota' && (
+            {validationResult.status === 'quota' && (
               <AlertCircleIcon className="absolute right-3 top-3.5 w-5 h-5 text-amber-500" />
             )}
           </div>
           
-          {/* Status Text */}
-          <div className="h-6 mb-2">
-            {validationStatus === 'validating' && (
+          {/* Detailed Status Text */}
+          <div className="min-h-[1.5rem] mb-2">
+            {isValidating && (
               <div className="flex items-center gap-2 text-xs text-indigo-600">
                 <LoaderIcon className="w-3 h-3 animate-spin" />
                 {t.apiKeyValidating}
               </div>
             )}
-            {validationStatus === 'valid' && (
+            
+            {validationResult.status === 'valid' && (
               <p className="text-xs text-green-600 font-medium">{t.apiKeySuccess}</p>
             )}
-            {validationStatus === 'invalid' && (
-              <p className="text-xs text-red-600 font-medium">{t.apiKeyInvalid}</p>
+            
+            {validationResult.status === 'quota' && (
+              <div className="text-xs text-amber-600">
+                <p className="font-bold">⚠️ {t.apiKeyQuota || "Quota Exceeded (429)"}</p>
+                {validationResult.detail && <p className="mt-1 opacity-80">{validationResult.detail}</p>}
+              </div>
             )}
-            {validationStatus === 'quota' && (
-              <p className="text-xs text-amber-600 font-medium">⚠️ API Quota Exceeded (429). Key is valid but busy.</p>
+
+            {validationResult.status === 'invalid' && (
+              <div className="text-xs text-red-600">
+                 <p className="font-bold">{t.apiKeyInvalid}</p>
+                 {validationResult.detail && (
+                    <p className="mt-1 opacity-80 break-words font-mono bg-red-50 p-1 rounded border border-red-100">
+                        {validationResult.detail}
+                    </p>
+                 )}
+              </div>
             )}
           </div>
           
@@ -117,16 +142,24 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ currentKey, onSave, onClose, 
              <div className="flex gap-2">
                <button
                  onClick={handleTestConnection}
-                 disabled={!keyInput.trim() || validationStatus === 'validating'}
+                 disabled={!keyInput.trim() || isValidating}
                  className="px-3 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
                >
                  {t.apiKeyTest}
                </button>
                <button
                  onClick={handleSave}
-                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-colors font-medium text-sm"
+                 className={`px-4 py-2 text-white rounded-lg shadow-sm transition-colors font-medium text-sm flex items-center gap-1
+                    ${validationResult.status === 'invalid' || validationResult.status === 'quota' 
+                        ? 'bg-slate-600 hover:bg-slate-700' 
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                    }
+                 `}
                >
-                 {t.apiKeySave}
+                 {validationResult.status === 'invalid' || validationResult.status === 'quota' 
+                    ? t.apiKeySaveForce 
+                    : t.apiKeySave
+                 }
                </button>
              </div>
           </div>

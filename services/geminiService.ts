@@ -4,6 +4,12 @@ import { ExtractedData, ReferenceExample } from "../types";
 // Note: We no longer initialize a global `ai` instance here.
 // It is initialized inside analyzeImage to support dynamic API keys.
 
+export interface ValidationResult {
+  status: 'valid' | 'invalid' | 'quota';
+  message?: string;
+  detail?: string;
+}
+
 /**
  * Resizes and compresses an image file, returning a Base64 string.
  * Limits dimension to max 1024px to save tokens while maintaining OCR quality.
@@ -61,9 +67,9 @@ export const fileToGenericBase64 = (file: File): Promise<string> => {
  * Validates the provided API Key by making a minimal API call.
  * Returns unique strings for different error states to help UI.
  */
-export const validateApiKey = async (apiKey: string): Promise<'valid' | 'invalid' | 'quota'> => {
+export const validateApiKey = async (apiKey: string): Promise<ValidationResult> => {
   try {
-    if (!apiKey) return 'invalid';
+    if (!apiKey) return { status: 'invalid', message: 'Empty Key' };
     const ai = new GoogleGenAI({ apiKey });
     // Use a lightweight model and minimal prompt to check validity
     await ai.models.generateContent({
@@ -71,14 +77,29 @@ export const validateApiKey = async (apiKey: string): Promise<'valid' | 'invalid
       contents: { parts: [{ text: 'Ping' }] },
       config: { maxOutputTokens: 1 }
     });
-    return 'valid';
+    return { status: 'valid' };
   } catch (error: any) {
     console.error("API Key validation failed:", error);
     const msg = JSON.stringify(error).toLowerCase();
-    if (msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
-        return 'quota';
+    
+    // Extract a more readable error message if possible
+    let errorDetail = error.message || "Unknown error";
+    if (error.message && error.message.includes('{')) {
+        try {
+            // Try to parse JSON error message from Google
+            const jsonPart = error.message.substring(error.message.indexOf('{'));
+            const parsed = JSON.parse(jsonPart);
+            if (parsed.error && parsed.error.message) {
+                errorDetail = parsed.error.message;
+            }
+        } catch (e) {}
     }
-    return 'invalid';
+
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('resource_exhausted')) {
+        return { status: 'quota', message: 'Quota Exceeded', detail: errorDetail };
+    }
+    
+    return { status: 'invalid', message: 'Invalid Key or Connection Failed', detail: errorDetail };
   }
 };
 
