@@ -11,8 +11,9 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // This maps the server-side/build-time process.env.API_KEY to the client-side bundle
-      // so your existing code `process.env.API_KEY` works without changes.
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // "env.API_KEY" comes from .env files (Local)
+      // "process.env.API_KEY" comes from System Variables (Vercel/CI)
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY)
     },
   }
 })

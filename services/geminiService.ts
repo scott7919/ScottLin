@@ -85,6 +85,12 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, baseDelay = 2000)
     return await fn();
   } catch (error: any) {
     const msg = error.toString().toLowerCase();
+    
+    // Check for Invalid API Key explicitly (400 or 401 usually)
+    if (msg.includes('api key not valid') || msg.includes('key invalid') || msg.includes('400 bad request')) {
+        throw new Error("API Key 無效或未設定 (Invalid API Key)");
+    }
+
     // Check for common rate limit or overload keywords
     const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('exhausted');
     const isServerOverload = msg.includes('503') || msg.includes('overloaded');
@@ -117,7 +123,7 @@ export const analyzeImage = async (
     // 0. Validation
     const effectiveKey = apiKey || process.env.API_KEY;
     if (!effectiveKey) {
-        throw new Error("Missing API Key. Please set your Gemini API Key in settings.");
+        throw new Error("未設定 API Key (Missing API Key)");
     }
 
     // 1. Initialize Client dynamically
