@@ -5,16 +5,52 @@ import { ExtractedData, ReferenceExample } from "../types";
 // It is initialized inside analyzeImage to support dynamic API keys.
 
 /**
- * Converts a File object to a Base64 string.
+ * Resizes and compresses an image file, returning a Base64 string.
+ * Limits dimension to max 1024px to save tokens while maintaining OCR quality.
  */
 export const fileToGenericBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
-      const base64Data = base64String.split(',')[1];
-      resolve(base64Data);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Resize logic: Max 1024px on the longest side
+        const MAX_SIZE = 1024;
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            reject(new Error("Could not get canvas context"));
+            return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Compress to JPEG with 0.7 quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        // Remove prefix
+        const base64Data = dataUrl.split(',')[1];
+        resolve(base64Data);
+      };
+      img.onerror = reject;
+      img.src = event.target?.result as string;
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -64,6 +100,7 @@ export const analyzeImage = async (
     // 1. Initialize Client dynamically
     const ai = new GoogleGenAI({ apiKey: effectiveKey });
 
+    // Optimize: Compress image before sending
     const base64Data = await fileToGenericBase64(file);
     
     // Model Selection
@@ -90,13 +127,16 @@ export const analyzeImage = async (
     const parts: any[] = [];
 
     // 2. Add Few-Shot Examples (Teaching Phase)
-    if (examples.length > 0) {
-      examples.forEach((ex, index) => {
+    // OPTIMIZATION: Only use the last 1 example to save tokens and prevent quota exhaustion
+    const limitedExamples = examples.slice(-1);
+
+    if (limitedExamples.length > 0) {
+      limitedExamples.forEach((ex, index) => {
         parts.push({ 
           inlineData: { mimeType: "image/jpeg", data: ex.base64 } 
         });
         parts.push({ 
-          text: `Example ${index + 1} Output (JSON Array): ${JSON.stringify(ex.data)}` 
+          text: `Example Output (JSON Array): ${JSON.stringify(ex.data)}` 
         });
       });
     }
@@ -104,7 +144,7 @@ export const analyzeImage = async (
     // 3. Add Target Image (Inference Phase)
     parts.push({
       inlineData: {
-        mimeType: file.type,
+        mimeType: "image/jpeg", // We converted to jpeg in fileToGenericBase64
         data: base64Data
       }
     });

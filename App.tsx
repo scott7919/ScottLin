@@ -186,8 +186,14 @@ const App: React.FC = () => {
       .filter(f => f.status === ProcessStatus.IDLE || f.status === ProcessStatus.ERROR || f.status === ProcessStatus.PENDING)
       .map(f => f.id);
 
-    // Process concurrently
-    await Promise.all(filesToProcess.map(id => processSingleFile(id)));
+    // Process Sequentially to avoid Rate Limits (429 Errors) and excessive quota usage
+    for (const id of filesToProcess) {
+       // Stop if the user navigated away or reset (optional check logic could be added here)
+       await processSingleFile(id);
+       
+       // Optional small delay between requests
+       await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
     setIsProcessing(false);
     
